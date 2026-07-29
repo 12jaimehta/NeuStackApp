@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { requestLogger } from './shared/middleware/requestLogger';
 import { errorHandler } from './shared/middleware/errorHandler';
 import cartRoutes from './features/cart/cart.routes';
+import checkoutRoutes from './features/checkout/checkout.routes';
 
 
 const app = express();
@@ -31,6 +32,7 @@ app.get('/health', (_req, res) => {
 
 // Feature Routes 
 app.use('/api/cart', cartRoutes);
+app.use('/api/checkout', checkoutRoutes);
 
 // 404 Catch-All 
 app.use((_req, res) => {
