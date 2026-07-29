@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { requestLogger } from './shared/middleware/requestLogger';
 import { errorHandler } from './shared/middleware/errorHandler';
+import cartRoutes from './features/cart/cart.routes';
+
 
 const app = express();
 
@@ -19,12 +21,18 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Logging 
 app.use(requestLogger);
 
+// Health Check (unauthenticated) 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Feature Routes 
+app.use('/api/cart', cartRoutes);
+
+// 404 Catch-All 
 app.use((_req, res) => {
   res.status(404).json({
     success: false,
@@ -34,6 +42,7 @@ app.use((_req, res) => {
   });
 });
 
+// Global Error Handler 
 app.use(errorHandler);
 
 export default app;
