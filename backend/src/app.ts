@@ -5,6 +5,7 @@ import { requestLogger } from './shared/middleware/requestLogger';
 import { errorHandler } from './shared/middleware/errorHandler';
 import cartRoutes from './features/cart/cart.routes';
 import checkoutRoutes from './features/checkout/checkout.routes';
+import adminRoutes from './features/admin/admin.routes';
 import productRoutes from './features/products/product.routes';
 
 const app = express();
@@ -34,6 +35,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/checkout', checkoutRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 404 Catch-All 
 app.use((_req, res) => {
