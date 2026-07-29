@@ -1,4 +1,4 @@
-import { ShoppingCart, Star, Package, Tag } from 'lucide-react';
+import { ShoppingCart, Star, Package } from 'lucide-react';
 import { formatPrice } from '../../../shared/utils/helpers';
 import type { Product } from '../../../shared/types/index';
 
