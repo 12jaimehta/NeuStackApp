@@ -1,115 +1,303 @@
+
 # Architecture and Design Decisions
 
-This document explains the project structure , implementation choices, and the conventions followed while building the application .
+This document explains the architecture, coding conventions, and the main design decisions made during the implementation of this project.
 
 ---
 
-# 1. Project Architecture
+# 1. Architecture: Feature-Sliced Design (FSD)
 
-The project is organized using **Feature-Sliced Design (FSD)** for both the frontend and backend . Instead of grouping files by type (controllers, services, components, etc.) , everything related to a feature is kept together.
+The project follows **Feature-Sliced Design (FSD)** for both the frontend and backend. Code is grouped by feature instead of technical layers so that each feature owns its routes, services, types, and related logic.
 
-A typical feature contains its own routes , services , types , and other related files , making it easier to find and maintain code.
+## Why FSD?
 
-## Folder Structure
+- Feature code stays together.
+- Easier to navigate as the project grows.
+- Shared utilities remain isolated from business logic.
+
+## Layer Rules
 
 | Layer | Backend | Frontend | Purpose |
-| --- | --- | --- | --- |
-| Features | `src/features/<feature>/` | `src/features/<feature>/` | Business logic and feature-specific code |
-| Shared | `src/shared/` | `src/shared/` | Common utilities used across features |
+|---|---|---|---|
+| Features | `src/features/<name>/` | `src/features/<name>/` | Business logic |
+| Shared | `src/shared/` | `src/shared/` | Common utilities |
 | Config | `src/config/` | — | Application configuration |
 
-### Import Rules
+A feature can import from `shared` and `config`. Features should not import directly from other features.
 
-Features are allowed to import code from:
+## High-Level Architecture
 
-- `shared`
-- `config`
+```mermaid
+flowchart LR
+    Client["Frontend"]
+    API["Express API"]
 
-Features should not depend directly on other features. If multiple features require the same functionality, that code should be moved into `shared`.
+    Cart["Cart"]
+    Checkout["Checkout"]
+    Admin["Admin"]
+
+    Shared["Shared"]
+    Config["Config"]
+    Store[("In-Memory Store")]
+
+    Client --> API
+
+    API --> Cart
+    API --> Checkout
+    API --> Admin
+
+    Cart --> Shared
+    Checkout --> Shared
+    Admin --> Shared
+
+    Shared --> Store
+    Shared --> Config
+```
 
 ---
 
 # 2. Design Decisions
 
-## In-Memory Store
+## Decision 1: In-Memory Singleton Store
 
-Since the assignment doesn't require a database, all application data is stored in memory.
+**Context**
 
-Instead of exposing a plain object, I used a Singleton class so all reads and updates happen through a single interface . This keeps state changes in one place and avoids accidental mutations from different parts of the application.
+The assignment does not require a database, but all services need access to the same application state.
 
-An additional `resetForTesting()` method is included so tests can start with a fresh state.
+**Options Considered**
 
----
+- Option A: Export plain objects.
+- Option B: Singleton class.
+- Option C: External in-memory database.
 
-## Discount Code Generation
+**Choice**
 
-The specification states that every **nth order** is eligible for a discount code.
+Singleton class.
 
-I considered generating the code automatically during checkout, but chose to generate it only through the admin endpoint.
+**Why**
 
-This keeps the responsibilities separate:
-
-- Checkout only validates discount codes.
-- The admin endpoint checks eligibility and creates a new code.
-
-It also matches the API requirements more closely and gives the admin explicit control over issuing new coupons.
+A Singleton provides one access point for reading and updating data. Services interact through methods instead of modifying state directly. This also makes testing easier with `resetForTesting()` and keeps replacing the implementation with a database straightforward later.
 
 ---
 
-## Feature-Sliced Design
+## Decision 2: Admin-Triggered Discount Generation
 
-The project follows Feature-Sliced Design throughout the codebase.
+**Context**
 
-Each feature contains its own implementation, which keeps related files together and reduces the need to search across different folders.
+The requirements mention every nth order is eligible for a discount and also provide an admin endpoint for generating discounts.
 
-Shared functionality is extracted into the `shared` directory instead of creating dependencies between features.
+**Options Considered**
 
----
+- Option A: Generate automatically during checkout.
+- Option B: Generate through the admin endpoint.
 
-## Request Validation
+**Choice**
 
-Incoming request bodies are validated using **Zod**.
+Admin endpoint.
 
-TypeScript types only exist during compilation , so runtime validation is still required for API requests.
+**Why**
 
-Each feature defines its schemas in its own `*.types.ts` file , and routes use a shared `validateBody()` middleware before the request reaches the controller .
+Checkout is responsible only for validating discount codes. Generation is handled by the admin endpoint after eligibility is verified. This keeps checkout logic simple and matches the provided API design.
 
-This avoids repeating validation logic inside controllers.
+### Discount Flow
 
----
+```mermaid
+flowchart TD
+Start[Order Placed]
+Check{Nth Order?}
 
-## Environment Configuration
-
-Business values such as:
-
-- discount percentage
-- nth-order threshold
-
-are loaded from environment variables through the configuration module.
-
-This keeps business configuration separate from the application logic and makes changing these values straightforward .
-
----
-
-## Order Identifiers
-
-Every order has two identifiers.
-
-- A UUID (`id`) used internally.
-- A sequential `orderNumber` that's easier to reference when viewing or discussing orders.
-
-The sequential order number is also used for checking discount eligibility.
-
----
-
-## Discount Code Format
-
-Generated discount codes follow this format:
-
-```
-DISC-XXXX-XXXX
+Start --> Check
+Check -->|No| End[Continue Checkout]
+Check -->|Yes| Admin["POST /admin/discount/generate"]
+Admin --> Generate[Generate Code]
+Generate --> Save[Save in Store]
+Save --> Checkout[Customer Uses Code]
+Checkout --> Validate[Validate Code]
+Validate --> Apply[Apply Discount]
 ```
 
-The random characters are generated using Node.js `crypto.randomBytes()`, which provides sufficiently random values for this assignment while avoiding additional dependencies.
+---
+
+## Decision 3: Feature-Sliced Design
+
+**Context**
+
+The project contains multiple independent features.
+
+**Options Considered**
+
+- Option A: MVC.
+- Option B: Feature-Sliced Design.
+
+**Choice**
+
+Feature-Sliced Design.
+
+**Why**
+
+Keeping controllers, services and types together inside a feature makes navigation easier. Shared code is moved into `shared` instead of creating dependencies between features.
+
+### Feature Structure
+
+```mermaid
+flowchart TD
+src[src]
+src --> Features
+src --> Shared
+src --> Config
+Features --> Cart
+Features --> Checkout
+Features --> Admin
+Cart --> Controller
+Cart --> Service
+Cart --> Routes
+Cart --> Types
+Shared --> Utils
+Shared --> Store
+Shared --> Constants
+```
 
 ---
+
+## Decision 4: Runtime Validation Using Zod
+
+**Context**
+
+TypeScript does not validate request payloads at runtime.
+
+**Options Considered**
+
+- Option A: Manual validation.
+- Option B: Zod schemas.
+
+**Choice**
+
+Zod.
+
+**Why**
+
+Schemas validate requests before controllers execute and also provide TypeScript types through `z.infer`. Validation logic stays in one place.
+
+### Request Flow
+
+```mermaid
+sequenceDiagram
+Client->>Router: HTTP Request
+Router->>Validation: validateBody()
+Validation->>Controller: Valid Request
+Controller->>Service: Business Logic
+Service->>Store: Read / Write
+Store-->>Service: Result
+Service-->>Controller: Response
+Controller-->>Client: JSON Response
+```
+
+---
+
+## Decision 5: Environment-Based Configuration
+
+**Context**
+
+Business values such as discount percentage and nth-order threshold may change.
+
+**Options Considered**
+
+- Option A: Hardcode values.
+- Option B: Environment variables.
+
+**Choice**
+
+Environment variables through `src/config`.
+
+**Why**
+
+Business configuration is separated from application logic and can be updated without code changes.
+
+---
+
+## Decision 6: UUID + Sequential Order Number
+
+**Context**
+
+Orders require both an internal identifier and a customer-friendly reference.
+
+**Options Considered**
+
+- Option A: UUID only.
+- Option B: Sequential number only.
+- Option C: UUID with sequential order number.
+
+**Choice**
+
+UUID with sequential order number.
+
+**Why**
+
+UUID is suitable for internal use and public APIs. Sequential numbers are easier for users and support staff to reference. The sequential number is also used for nth-order discount eligibility.
+
+---
+
+## Decision 7: Discount Code Format
+
+**Context**
+
+Generated discount codes should be easy to read and have a low chance of collision.
+
+**Options Considered**
+
+- Option A: Sequential codes.
+- Option B: Random codes using `crypto`.
+
+**Choice**
+
+`DISC-XXXX-XXXX` generated with `crypto.randomBytes()`.
+
+**Why**
+
+The format is readable while providing enough randomness for this assignment.
+
+---
+
+# 3. Coding Practices
+
+## File Naming
+
+| Type | Pattern |
+|---|---|
+| Service | `<feature>.service.ts` |
+| Controller | `<feature>.controller.ts` |
+| Routes | `<feature>.routes.ts` |
+| Types | `<feature>.types.ts` |
+| Test | `<feature>.test.ts` |
+
+## API Responses
+
+Controllers use the shared `sendSuccess()` and `sendError()` helpers instead of calling `res.json()` directly.
+
+## Error Handling
+
+- Expected errors use `createError()`.
+- Unexpected errors are handled by the global error handler.
+- Controllers are wrapped with `asyncHandler()`.
+
+## Validation
+
+Validation is performed with Zod schemas in each feature.
+
+## Constants
+
+Common messages and values are stored in `src/constants`.
+
+## Store Access
+
+Controllers call services, and services interact with the Singleton store.
+
+## Configuration
+
+Environment values are accessed only through `src/config`.
+
+## Testing
+
+- Tests reset the store before each run.
+- Tests execute serially because the store is shared.
+- External dependencies are not mocked.
